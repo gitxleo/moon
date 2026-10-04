@@ -232,7 +232,7 @@ lua_opt_field(lua_State* L, int index, std::string_view key, const Type& def = T
 template<typename Type>
 inline Type lua_check_field(lua_State* L, int index, std::string_view key) {
     index = lua_absindex(L, index);
-    luaL_checktype(L, index, LUA_TTABLE);
+    assert(lua_type(L, index) == LUA_TTABLE);
     lua_pushlstring(L, key.data(), key.size());
     lua_scope_pop scope { L };
     lua_rawget(L, index);
@@ -262,4 +262,10 @@ inline std::string lua_tostring_unchecked(lua_State* L, int index) {
             return std::string { "string type expected" };
     }
 }
+
+template<typename... Args>
+inline int lua_argferror(lua_State* L, int arg, const char* fmt, Args... args) {
+    return luaL_argerror(L, arg, lua_pushfstring(L, fmt, args...));
+}
+
 } // namespace moon

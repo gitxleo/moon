@@ -84,13 +84,9 @@ class lua_json_error: public std::runtime_error {
 public:
     using runtime_error::runtime_error;
 
-    static lua_json_error format(const char* fmt, ...) {
-        va_list args;
-        va_start(args, fmt);
-        char buffer[1024];
-        vsnprintf(buffer, sizeof(buffer), fmt, args);
-        va_end(args);
-        return lua_json_error(buffer);
+    template<typename... Args>
+    static lua_json_error format(std::format_string<Args...> fmt, Args&&... args) {
+        return lua_json_error(std::format(fmt, std::forward<Args>(args)...));
     }
 };
 
@@ -126,7 +122,7 @@ static void json_create_config(lua_State* L) {
 static json_config* json_fetch_config(lua_State* L) {
     auto* cfg = (json_config*)lua_touserdata(L, lua_upvalueindex(1));
     if (!cfg)
-        luaL_error(L, "Unable to fetch json configuration");
+        luaL_error(L, "json: failed to fetch module configuration from upvalue");
     return cfg;
 }
 
@@ -162,7 +158,12 @@ static int json_options(lua_State* L) {
         }
         case "concat_buffer_size"_csh: {
             auto new_size = static_cast<uint32_t>(luaL_checkinteger(L, 2));
-            luaL_argcheck(L, new_size >= BUFFER_OPTION_CHEAP_PREPEND, 2, "buffer size too small");
+            luaL_argcheck(
+                L,
+                new_size >= BUFFER_OPTION_CHEAP_PREPEND,
+                2,
+                "json.options: concat_buffer_size is smaller than the minimum buffer prepend size"
+            );
             lua_pushinteger(
                 L,
                 static_cast<lua_Integer>(std::exchange(cfg->concat_buffer_size, new_size))
@@ -170,7 +171,11 @@ static int json_options(lua_State* L) {
             break;
         }
         default:
-            return luaL_error(L, "Invalid json.options '%s'", name);
+            return luaL_error(
+                L,
+                "bad argument #1 to 'options' (json.options: unknown option '%s')",
+                name
+            );
     }
     return lua_gettop(L) - top;
 }
@@ -580,7 +585,7 @@ static int decode(lua_State* L) {
     if (nullptr == doc) {
         return luaL_error(
             L,
-            "decode error: %s code: %d at position: %d\n",
+            "json.decode: %s (code=%d, position=%d)",
             err.msg,
             (int)err.code,
             (int)err.pos
